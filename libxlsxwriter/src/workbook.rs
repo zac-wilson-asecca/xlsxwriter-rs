@@ -237,6 +237,18 @@ impl Workbook {
             }
         }
     }
+
+    pub fn add_vba_project(&mut self, path: &str) -> Result<(), XlsxError> {
+        let project_name = CString::new(path).expect("Null Error");
+        let res = unsafe {
+            libxlsxwriter_sys::workbook_add_vba_project(self.workbook, project_name.as_ptr())
+        };
+        if res == 0 {
+            Ok(())
+        } else {
+            Err(XlsxError::new(res))
+        }
+    }
 }
 
 impl Drop for Workbook {
