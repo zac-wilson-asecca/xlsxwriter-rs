@@ -1,258 +1,28 @@
-use super::{convert_bool, Chart, DataValidation, Format, FormatColor, Workbook, XlsxError};
+pub mod conditional_format;
+mod datetime;
+pub mod filter;
+pub mod table;
+pub mod validation;
+
+use crate::CStringHelper;
+
+use super::{convert_bool, Chart, Format, FormatColor, Workbook, XlsxError};
 use std::ffi::CString;
 use std::os::raw::c_char;
 
-fn option_string_to_raw_pointer(value: Option<&str>) -> *mut std::os::raw::c_char {
-    value
-        .map(|x| CString::new(x).expect("CString::new failed").into_raw())
-        .unwrap_or(std::ptr::null_mut())
-}
+pub use datetime::*;
 
-/// Structure to set the options of a table column.
+/// Integer data type to represent a column value. Equivalent to `u16`.
 ///
-/// Please read [libxslxwriter document](https://libxlsxwriter.github.io/working_with_tables.html) to learn more.
-#[derive(Default)]
-pub struct TableColumn<'a> {
-    /// Set the header name/caption for the column. If NULL the header defaults to Column 1, Column 2, etc.
-    pub header: Option<String>,
+/// The maximum column in Excel is 16,384.
+pub type WorksheetCol = libxlsxwriter_sys::lxw_col_t;
 
-    /// Set the formula for the column.
-    pub formula: Option<String>,
-
-    /// Set the string description for the column total.
-    pub total_string: Option<String>,
-
-    /// Set the function for the column total.
-    pub total_function: TableTotalFunction,
-
-    /// Set the format for the column header.
-    pub header_format: Option<Format<'a>>,
-
-    /// Set the format for the data rows in the column.
-    pub format: Option<Format<'a>>,
-
-    /// Set the formula value for the column total (not generally required).
-    pub total_value: f64,
-}
-
-impl<'a> From<TableColumn<'a>> for libxlsxwriter_sys::lxw_table_column {
-    fn from(c: TableColumn<'a>) -> libxlsxwriter_sys::lxw_table_column {
-        libxlsxwriter_sys::lxw_table_column {
-            header: option_string_to_raw_pointer(c.header.as_deref()),
-            formula: option_string_to_raw_pointer(c.formula.as_deref()),
-            total_string: option_string_to_raw_pointer(c.total_string.as_deref()),
-            total_function: c.total_function.into(),
-            header_format: c
-                .header_format
-                .map(|x| x.format)
-                .unwrap_or(std::ptr::null_mut()),
-            format: c.format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
-            total_value: c.total_value,
-        }
-    }
-}
-
-/// The type of table style (Light, Medium or Dark).
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub enum TableStyleType {
-    Default,
-    Light,
-    Medium,
-    Dark,
-}
-
-impl Default for TableStyleType {
-    fn default() -> TableStyleType {
-        TableStyleType::Default
-    }
-}
-
-impl From<TableStyleType> for u8 {
-    fn from(t: TableStyleType) -> u8 {
-        (match t {
-            TableStyleType::Dark => {
-                libxlsxwriter_sys::lxw_table_style_type_LXW_TABLE_STYLE_TYPE_DARK
-            }
-            TableStyleType::Light => {
-                libxlsxwriter_sys::lxw_table_style_type_LXW_TABLE_STYLE_TYPE_LIGHT
-            }
-            TableStyleType::Medium => {
-                libxlsxwriter_sys::lxw_table_style_type_LXW_TABLE_STYLE_TYPE_MEDIUM
-            }
-            TableStyleType::Default => {
-                libxlsxwriter_sys::lxw_table_style_type_LXW_TABLE_STYLE_TYPE_DEFAULT
-            }
-        }) as u8
-    }
-}
-
-/// Definitions for the standard Excel functions that are available via the dropdown in the total row of an Excel table.
+/// Integer data type to represent a row value. Equivalent to `u32`.
 ///
-/// Please read [libxslxwriter document](https://libxlsxwriter.github.io/working_with_tables.html) to learn more.
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub enum TableTotalFunction {
-    None,
+/// The maximum row in Excel is 1,048,576.
+pub type WorksheetRow = libxlsxwriter_sys::lxw_row_t;
 
-    /// Use the average function as the table total.
-    Average,
-
-    /// Use the count numbers function as the table total.
-    CountNums,
-
-    /// Use the count function as the table total.
-    Count,
-
-    /// Use the max function as the table total.
-    Max,
-
-    /// Use the min function as the table total.
-    Min,
-
-    /// Use the standard deviation function as the table total.
-    StdDev,
-
-    /// Use the sum function as the table total.
-    Sum,
-
-    /// Use the var function as the table total.
-    Var,
-}
-
-impl Default for TableTotalFunction {
-    fn default() -> TableTotalFunction {
-        TableTotalFunction::None
-    }
-}
-
-impl From<TableTotalFunction> for u8 {
-    fn from(f: TableTotalFunction) -> u8 {
-        (match f {
-            TableTotalFunction::None => 0,
-            TableTotalFunction::Average => {
-                libxlsxwriter_sys::lxw_table_total_functions_LXW_TABLE_FUNCTION_AVERAGE
-            }
-            TableTotalFunction::CountNums => {
-                libxlsxwriter_sys::lxw_table_total_functions_LXW_TABLE_FUNCTION_COUNT_NUMS
-            }
-            TableTotalFunction::Count => {
-                libxlsxwriter_sys::lxw_table_total_functions_LXW_TABLE_FUNCTION_COUNT
-            }
-            TableTotalFunction::Max => {
-                libxlsxwriter_sys::lxw_table_total_functions_LXW_TABLE_FUNCTION_MAX
-            }
-            TableTotalFunction::Min => {
-                libxlsxwriter_sys::lxw_table_total_functions_LXW_TABLE_FUNCTION_MIN
-            }
-            TableTotalFunction::StdDev => {
-                libxlsxwriter_sys::lxw_table_total_functions_LXW_TABLE_FUNCTION_STD_DEV
-            }
-            TableTotalFunction::Sum => {
-                libxlsxwriter_sys::lxw_table_total_functions_LXW_TABLE_FUNCTION_SUM
-            }
-            TableTotalFunction::Var => {
-                libxlsxwriter_sys::lxw_table_total_functions_LXW_TABLE_FUNCTION_VAR
-            }
-        }) as u8
-    }
-}
-
-/// Options used to define worksheet tables.
-/// ```rust
-/// # use xlsxwriter::*;
-/// # fn main() -> Result<(), XlsxError> {
-/// # let workbook = Workbook::new("test-worksheet_add_table-1.xlsx");
-/// # let mut worksheet = workbook.add_worksheet(None)?;
-/// worksheet.write_string(0, 0, "header 1", None)?;
-/// worksheet.write_string(0, 1, "header 2", None)?;
-/// worksheet.write_string(1, 0, "content 1", None)?;
-/// worksheet.write_number(1, 1, 1.0, None)?;
-/// worksheet.write_string(2, 0, "content 2", None)?;
-/// worksheet.write_number(2, 1, 2.0, None)?;
-/// worksheet.write_string(3, 0, "content 3", None)?;
-/// worksheet.write_number(3, 1, 3.0, None)?;
-/// worksheet.add_table(0, 0, 3, 1, None)?;
-/// # workbook.close()
-/// # }
-/// ```
-#[derive(Default)]
-pub struct TableOptions<'a> {
-    /**
-     * The name parameter is used to set the name of the table. This parameter is optional and by
-     * default tables are named Table1, Table2, etc. in the worksheet order that they are added.
-     * If you override the table name you must ensure that it doesn't clash with an existing table
-     * name and that it follows Excel's requirements for table names, see the Microsoft Office documentation.
-     */
-    pub name: Option<String>,
-
-    /// The `no_header_row` parameter can be used to turn off the header row in the table. It is on by default.    
-    pub no_header_row: bool,
-
-    /// The `no_autofilter` parameter can be used to turn off the autofilter in the header row. It is on by default.    
-    pub no_autofilter: bool,
-
-    /// The `no_banded_rows` parameter can be used to turn off the rows of alternating color in the table. It is on by default.
-    pub no_banded_rows: bool,
-
-    /// The `banded_columns` parameter can be used to used to create columns of alternating color in the table. It is off by default.
-    pub banded_columns: bool,
-
-    /// The `first_column` parameter can be used to highlight the first column of the table. The type of highlighting will depend on the style_type of the table. It may be bold text or a different color. It is off by default.
-    pub first_column: bool,
-
-    /// The `last_column` parameter can be used to highlight the last column of the table. The type of highlighting will depend on the style of the table. It may be bold text or a different color. It is off by default.
-    pub last_column: bool,
-
-    /// The `style_type` parameter can be used to set the style of the table, in conjunction with the style_type_number parameter.
-    pub style_type: TableStyleType,
-
-    /// The `style_type_number` parameter is used with style_type to set the style of a worksheet table.     
-    pub style_type_number: u8,
-
-    /// The `total_row` parameter can be used to turn on the total row in the last row of a table. It is distinguished from the other rows by a different formatting and also with dropdown SUBTOTAL functions.
-    pub total_row: bool,
-
-    /// The columns parameter can be used to set properties for columns within the table.
-    pub columns: Option<Vec<TableColumn<'a>>>,
-}
-
-impl<'a> TableOptions<'a> {
-    fn into_lxw_table_options(
-        self,
-    ) -> (
-        Option<Vec<libxlsxwriter_sys::lxw_table_column>>,
-        libxlsxwriter_sys::lxw_table_options,
-    ) {
-        let mut columns: Option<Vec<libxlsxwriter_sys::lxw_table_column>> = self
-            .columns
-            .map(|z| z.into_iter().map(|x| x.into()).collect());
-        let mut c_columns: Option<Vec<_>> = columns.as_mut().map(|x| {
-            x.iter_mut()
-                .map(|y| y as *mut libxlsxwriter_sys::lxw_table_column)
-                .collect()
-        });
-        (
-            columns,
-            libxlsxwriter_sys::lxw_table_options {
-                name: option_string_to_raw_pointer(self.name.as_deref()),
-                no_header_row: convert_bool(self.no_header_row),
-                no_autofilter: convert_bool(self.no_autofilter),
-                no_banded_rows: convert_bool(self.no_banded_rows),
-                banded_columns: convert_bool(self.banded_columns),
-                first_column: convert_bool(self.first_column),
-                last_column: convert_bool(self.last_column),
-                style_type: self.style_type.into(),
-                style_type_number: self.style_type_number,
-                total_row: convert_bool(self.total_row),
-                columns: c_columns
-                    .as_mut()
-                    .map(|x| x.as_mut_ptr())
-                    .unwrap_or(std::ptr::null_mut()),
-            },
-        )
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Default)]
 pub struct DateTime {
     pub year: i16,
     pub month: i8,
@@ -262,33 +32,7 @@ pub struct DateTime {
     pub second: f64,
 }
 
-impl DateTime {
-    pub fn new(year: i16, month: i8, day: i8, hour: i8, min: i8, second: f64) -> DateTime {
-        DateTime {
-            year,
-            month,
-            day,
-            hour,
-            min,
-            second,
-        }
-    }
-}
-
-impl From<&DateTime> for libxlsxwriter_sys::lxw_datetime {
-    fn from(datetime: &DateTime) -> Self {
-        libxlsxwriter_sys::lxw_datetime {
-            year: datetime.year.into(),
-            month: datetime.month.into(),
-            day: datetime.day.into(),
-            hour: datetime.hour.into(),
-            min: datetime.min.into(),
-            sec: datetime.second,
-        }
-    }
-}
-
-/// Options for modifying images inserted via [Worksheet.insert_image_opt()](struct.Worksheet.html#method.insert_image_opt).
+/// Options for modifying images inserted via [`Worksheet.insert_image_opt`](struct.Worksheet.html#method.insert_image_opt).
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct ImageOptions {
     /// Offset from the left of the cell in pixels.
@@ -317,6 +61,7 @@ impl From<&ImageOptions> for libxlsxwriter_sys::lxw_image_options {
     }
 }
 
+/// Paper sizes
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum PaperType {
     PrinterDefault,
@@ -359,6 +104,7 @@ impl PaperType {
     }
 }
 
+/// Options for header and footer
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct HeaderFooterOptions {
     pub margin: f64,
@@ -399,6 +145,7 @@ impl GridLines {
     }
 }
 
+/// Sheet protection
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct Protection {
     pub no_select_locked_cells: bool,
@@ -421,6 +168,7 @@ pub struct Protection {
 }
 
 impl Protection {
+    #[must_use]
     pub fn new() -> Protection {
         Protection {
             no_select_locked_cells: true,
@@ -474,31 +222,117 @@ impl From<&Protection> for libxlsxwriter_sys::lxw_protection {
     }
 }
 
-/// Integer data type to represent a column value. Equivalent to `u16`.
-///
-/// The maximum column in Excel is 16,384.
-pub type WorksheetCol = libxlsxwriter_sys::lxw_col_t;
+/// Options struct for the `set_column()` and `set_row()` functions.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct RowColOptions {
+    hidden: bool,
+    level: u8,
+    collapsed: bool,
+}
 
-/// Integer data type to represent a row value. Equivalent to `u32`.
-///
-/// The maximum row in Excel is 1,048,576.
-pub type WorksheetRow = libxlsxwriter_sys::lxw_row_t;
+impl RowColOptions {
+    #[must_use]
+    pub fn new(hidden: bool, level: u8, collapsed: bool) -> Self {
+        RowColOptions {
+            hidden,
+            level,
+            collapsed,
+        }
+    }
 
-pub type CommentOptions = libxlsxwriter_sys::lxw_comment_options;
-pub type RowColOptions = libxlsxwriter_sys::lxw_row_col_options;
+    pub(crate) fn to_internal(&self) -> libxlsxwriter_sys::lxw_row_col_options {
+        libxlsxwriter_sys::lxw_row_col_options {
+            hidden: convert_bool(self.hidden),
+            level: self.level,
+            collapsed: convert_bool(self.collapsed),
+        }
+    }
+}
 
-pub const LXW_DEF_ROW_HEIGHT: f64 = 8.43;
+/// Comment display type
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum CommentDisplayType {
+    #[default]
+    Default,
+    Hidden,
+    Visible,
+}
+
+impl CommentDisplayType {
+    pub(crate) fn into_internal(self) -> libxlsxwriter_sys::lxw_comment_display_types {
+        match self {
+            CommentDisplayType::Default => {
+                libxlsxwriter_sys::lxw_comment_display_types_LXW_COMMENT_DISPLAY_DEFAULT
+            }
+            CommentDisplayType::Hidden => {
+                libxlsxwriter_sys::lxw_comment_display_types_LXW_COMMENT_DISPLAY_HIDDEN
+            }
+            CommentDisplayType::Visible => {
+                libxlsxwriter_sys::lxw_comment_display_types_LXW_COMMENT_DISPLAY_VISIBLE
+            }
+        }
+    }
+}
+
+/// Options for modifying comments inserted via `write_comment_opt()`
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct CommentOptions {
+    visible: CommentDisplayType,
+    author: Option<String>,
+    width: Option<u16>,
+    height: Option<u16>,
+    x_scale: Option<f64>,
+    y_scale: Option<f64>,
+    color: FormatColor,
+    font_name: Option<String>,
+    font_size: Option<f64>,
+    font_family: Option<u8>,
+    start_row: WorksheetRow,
+    start_col: WorksheetCol,
+    x_offset: i32,
+    y_offset: i32,
+}
+
+impl CommentOptions {
+    pub(crate) fn to_internal(
+        &self,
+        workbook: &Workbook,
+    ) -> Result<libxlsxwriter_sys::lxw_comment_options, XlsxError> {
+        Ok(libxlsxwriter_sys::lxw_comment_options {
+            visible: self.visible.into_internal() as u8,
+            author: workbook.register_option_str(self.author.as_deref())? as *mut c_char,
+            width: self.width.unwrap_or_default(),
+            height: self.height.unwrap_or_default(),
+            x_scale: self.x_scale.unwrap_or_default(),
+            y_scale: self.y_scale.unwrap_or_default(),
+            color: self.color.value(),
+            font_name: workbook.register_option_str(self.font_name.as_deref())? as *mut c_char,
+            font_size: self.font_size.unwrap_or_default(),
+            font_family: self.font_family.unwrap_or_default(),
+            start_row: self.start_row,
+            start_col: self.start_col,
+            x_offset: self.x_offset,
+            y_offset: self.y_offset,
+        })
+    }
+}
+
+/// Default Excel row height in character units.
+pub const LXW_DEF_ROW_HEIGHT: f64 = 15.0;
+/// Default Excel row height in pixels.
 pub const LXW_DEF_ROW_HEIGHT_PIXELS: u32 = 20;
-pub const LXW_DEF_COL_WIDTH: f64 = 15.0;
+/// Default Excel column width in character units.
+pub const LXW_DEF_COL_WIDTH: f64 = 8.43;
+/// Default Excel column width in pixels.
 pub const LXW_DEF_COL_WIDTH_PIXELS: u32 = 64;
 
 /// The Worksheet object represents an Excel worksheet. It handles operations such as writing data to cells or formatting worksheet layout.
 ///
 /// A Worksheet object isn't created directly. Instead a worksheet is created by calling the `workbook.add_worksheet()` function from a [Workbook](struct.Workbook.html) object:
 /// ```rust
-/// use xlsxwriter::*;
+/// use xlsxwriter::prelude::*;
 /// # fn main() -> Result<(), XlsxError> {
-/// let workbook = Workbook::new("test-worksheet.xlsx");
+/// let workbook = Workbook::new("test-worksheet.xlsx")?;
 /// let mut worksheet = workbook.add_worksheet(None)?;
 /// worksheet.write_string(0, 0, "Hello, excel", None)?;
 /// workbook.close()
@@ -514,9 +348,9 @@ pub struct Worksheet<'a> {
 impl<'a> Worksheet<'a> {
     /// This function writes the comment of a cell
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_comment-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_comment-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// worksheet.write_comment(0, 0, "This is some comment text")?;
     /// worksheet.write_comment(1, 0, "This cell also has a comment")?;
@@ -534,7 +368,7 @@ impl<'a> Worksheet<'a> {
                 self.worksheet,
                 row,
                 col,
-                CString::new(text).unwrap().as_c_str().as_ptr(),
+                CString::new(text)?.as_c_str().as_ptr(),
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -549,15 +383,16 @@ impl<'a> Worksheet<'a> {
         row: WorksheetRow,
         col: WorksheetCol,
         text: &str,
-        options: &mut CommentOptions,
+        options: &CommentOptions,
     ) -> Result<(), XlsxError> {
+        let mut options = options.to_internal(self._workbook)?;
         unsafe {
             let result = libxlsxwriter_sys::worksheet_write_comment_opt(
                 self.worksheet,
                 row,
                 col,
-                CString::new(text).unwrap().as_c_str().as_ptr(),
-                options,
+                self._workbook.register_str(text)?,
+                &mut options,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -569,9 +404,9 @@ impl<'a> Worksheet<'a> {
 
     /// This function writes numeric types to the cell specified by row and column:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_number-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_number-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// worksheet.write_number(0, 0, 123456.0, None)?;
     /// worksheet.write_number(1, 0, 2.3451, None)?;
@@ -580,18 +415,16 @@ impl<'a> Worksheet<'a> {
     /// ```
     /// ![Result Image](https://github.com/informationsea/xlsxwriter-rs/raw/master/images/test-worksheet-write_number-1.png)
     ///
-    /// The native data type for all numbers in Excel is a IEEE-754 64-bit double-precision floating point, which is also the default type used by worksheet_write_number.
+    /// The native data type for all numbers in Excel is a IEEE-754 64-bit double-precision floating point, which is also the default type used by `worksheet_write_number`.
     ///
     /// The format parameter is used to apply formatting to the cell. This parameter can be `None` to indicate no formatting or it can be a Format object.
     ///
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_number-2.xlsx");
-    /// let format = workbook.add_format()
-    ///     .set_num_format("$#,##0.00");
+    /// # let workbook = Workbook::new("test-worksheet_write_number-2.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
-    /// worksheet.write_number(0, 0, 1234.567, Some(&format))?;
+    /// worksheet.write_number(0, 0, 1234.567, Some(&Format::new().set_num_format("$#,##0.00")))?;
     /// # workbook.close()
     /// # }
     /// ```
@@ -612,7 +445,7 @@ impl<'a> Worksheet<'a> {
                 row,
                 col,
                 number,
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -624,9 +457,9 @@ impl<'a> Worksheet<'a> {
 
     /// This function writes a string to the cell specified by row and column:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_string-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_string-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// worksheet.write_string(0, 0, "This phrase is English!", None)?;
     /// # workbook.close()
@@ -637,13 +470,11 @@ impl<'a> Worksheet<'a> {
     /// The format parameter is used to apply formatting to the cell. This parameter can be `None` to indicate no formatting or it can be a Format object:
     ///
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_string-2.xlsx");
-    /// let format = workbook.add_format()
-    ///     .set_bold();
+    /// # let workbook = Workbook::new("test-worksheet_write_string-2.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
-    /// worksheet.write_string(0, 0, "This phrase is Bold!", Some(&format))?;
+    /// worksheet.write_string(0, 0, "This phrase is Bold!", Some(&Format::new().set_bold()))?;
     /// # workbook.close()
     /// # }
     /// ```
@@ -651,9 +482,9 @@ impl<'a> Worksheet<'a> {
     ///
     /// Unicode strings are supported in UTF-8 encoding.
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_string-3.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_string-3.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// worksheet.write_string(0, 0, "こんにちは、世界！", None)?;
     /// # workbook.close()
@@ -667,13 +498,14 @@ impl<'a> Worksheet<'a> {
         text: &str,
         format: Option<&Format>,
     ) -> Result<(), XlsxError> {
+        let mut c_string_helper = CStringHelper::new();
         unsafe {
             let result = libxlsxwriter_sys::worksheet_write_string(
                 self.worksheet,
                 row,
                 col,
-                CString::new(text).unwrap().as_c_str().as_ptr(),
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                c_string_helper.add(text)?,
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -685,9 +517,9 @@ impl<'a> Worksheet<'a> {
 
     /// This function writes a formula or function to the cell specified by row and column:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_formula-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_formula-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// worksheet.write_formula(0, 0, "=B3 + 6", None)?;
     /// worksheet.write_formula(1, 0, "=SIN(PI()/4)", None)?;
@@ -706,9 +538,9 @@ impl<'a> Worksheet<'a> {
     ///
     /// Formulas must be written with the US style separator/range operator which is a comma (not semi-colon). Therefore a formula with multiple values should be written as follows:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_formula-2.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_formula-2.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// // OK
     /// worksheet.write_formula(0, 0, "=SUM(1, 2, 3)", None)?;
@@ -725,13 +557,14 @@ impl<'a> Worksheet<'a> {
         formula: &str,
         format: Option<&Format>,
     ) -> Result<(), XlsxError> {
+        let mut c_string_helper = CStringHelper::new();
         unsafe {
             let result = libxlsxwriter_sys::worksheet_write_formula(
                 self.worksheet,
                 row,
                 col,
-                CString::new(formula).unwrap().as_c_str().as_ptr(),
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                c_string_helper.add(formula)?,
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -746,9 +579,9 @@ impl<'a> Worksheet<'a> {
     ///
     /// Array formulas can return a single value or a range or values. For array formulas that return a range of values you must specify the range that the return values will be written to. This is why this function has first_ and last_ row/column parameters:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_array_formula-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_array_formula-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// worksheet.write_array_formula(4, 0, 6, 0, "{=TREND(C5:C7,B5:B7)}", None)?;
     /// # workbook.close()
@@ -756,9 +589,9 @@ impl<'a> Worksheet<'a> {
     /// ```
     /// If the array formula returns a single value then the first_ and last_ parameters should be the same:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_array_formula-2.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_array_formula-2.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// worksheet.write_array_formula(1, 0, 1, 0, "{=SUM(B1:C1*B2:C2)}", None)?;
     /// # workbook.close()
@@ -773,6 +606,7 @@ impl<'a> Worksheet<'a> {
         formula: &str,
         format: Option<&Format>,
     ) -> Result<(), XlsxError> {
+        let mut c_string_helper = CStringHelper::new();
         unsafe {
             let result = libxlsxwriter_sys::worksheet_write_array_formula(
                 self.worksheet,
@@ -780,8 +614,8 @@ impl<'a> Worksheet<'a> {
                 first_col,
                 last_row,
                 last_col,
-                CString::new(formula).unwrap().as_c_str().as_ptr(),
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                c_string_helper.add(formula)?,
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -793,20 +627,18 @@ impl<'a> Worksheet<'a> {
 
     /// This function can be used to write a date or time to the cell specified by row and column:
     /// ```rust
-    /// use xlsxwriter::*;
+    /// use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_datetime-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_datetime-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// let datetime = DateTime::new(2013, 2, 28, 12, 0, 0.0);
-    /// let datetime_format = workbook.add_format()
-    ///     .set_num_format("mmm d yyyy hh:mm AM/PM");
-    /// worksheet.write_datetime(1, 0, &datetime, Some(&datetime_format))?;
+    /// worksheet.write_datetime(1, 0, &datetime, Some(&Format::new().set_num_format("mmm d yyyy hh:mm AM/PM")))?;
     /// # workbook.close()
     /// # }
     /// ```
     /// ![Result Image](https://github.com/informationsea/xlsxwriter-rs/raw/master/images/test-worksheet-write_datetime-1.png)
     ///
-    /// The `format` parameter should be used to apply formatting to the cell using a [Format](struct.Format.html) object as shown above. Without a date format the datetime will appear as a number only.
+    /// The `format` parameter should be used to apply formatting to the cell using a [`Format`] object as shown above. Without a date format the datetime will appear as a number only.
     ///
     /// See [Working with Dates and Times](https://libxlsxwriter.github.io/working_with_dates.html) for more information about handling dates and times in libxlsxwriter.
     pub fn write_datetime(
@@ -823,7 +655,7 @@ impl<'a> Worksheet<'a> {
                 row,
                 col,
                 &mut xls_datetime,
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -836,12 +668,12 @@ impl<'a> Worksheet<'a> {
     /// This function is used to write a URL/hyperlink to a worksheet cell specified by row and column.
     /// The format parameter is used to apply formatting to the cell. This parameter can be `None` to indicate no formatting or it can be a [Format](struct.Format.html) object. The typical worksheet format for a hyperlink is a blue underline:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_url-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_url-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
-    /// let url_format = workbook.add_format()
-    ///     .set_underline(FormatUnderline::Single).set_font_color(FormatColor::Blue);
+    /// let mut url_format = Format::new();
+    /// url_format.set_underline(FormatUnderline::Single).set_font_color(FormatColor::Blue);
     /// worksheet.write_url(0, 0, "http://libxlsxwriter.github.io", Some(&url_format))?;
     /// # workbook.close()
     /// # }
@@ -849,12 +681,12 @@ impl<'a> Worksheet<'a> {
     ///
     /// The usual web style URI's are supported: `http://`, `https://`, `ftp://` and `mailto:` :
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_url-2.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_url-2.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
-    /// # let mut url_format = workbook.add_format()
-    /// #   .set_underline(FormatUnderline::Single).set_font_color(FormatColor::Blue);
+    /// # let mut url_format = Format::new();
+    /// # url_format.set_underline(FormatUnderline::Single).set_font_color(FormatColor::Blue);
     /// worksheet.write_url(0, 0, "ftp://www.python.org/", Some(&url_format))?;
     /// worksheet.write_url(1, 0, "http://www.python.org/", Some(&url_format))?;
     /// worksheet.write_url(2, 0, "https://www.python.org/", Some(&url_format))?;
@@ -865,12 +697,12 @@ impl<'a> Worksheet<'a> {
     ///
     /// An Excel hyperlink is comprised of two elements: the displayed string and the non-displayed link. By default the displayed string is the same as the link. However, it is possible to overwrite it with any other libxlsxwriter type using the appropriate `Worksheet.write_*()` function. The most common case is to overwrite the displayed link text with another string:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_url-3.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_url-3.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
-    /// # let mut url_format = workbook.add_format()
-    /// #   .set_underline(FormatUnderline::Single).set_font_color(FormatColor::Blue);
+    /// # let mut url_format = Format::new();
+    /// # url_format.set_underline(FormatUnderline::Single).set_font_color(FormatColor::Blue);
     /// worksheet.write_url(0, 0, "http://libxlsxwriter.github.io", Some(&url_format))?;
     /// worksheet.write_string(0, 0, "Read the documentation.", Some(&url_format))?;
     /// # workbook.close()
@@ -879,14 +711,14 @@ impl<'a> Worksheet<'a> {
     ///
     /// Two local URIs are supported: `internal:` and `external:`. These are used for hyperlinks to internal worksheet references or external workbook and worksheet references:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_url-4.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_url-4.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # let mut worksheet2 = workbook.add_worksheet(None)?;
     /// # let mut worksheet3 = workbook.add_worksheet(Some("Sales Data"))?;
-    /// # let mut url_format = workbook.add_format()
-    /// #   .set_underline(FormatUnderline::Single).set_font_color(FormatColor::Blue);
+    /// # let mut url_format = Format::new();
+    /// # url_format.set_underline(FormatUnderline::Single).set_font_color(FormatColor::Blue);
     /// worksheet.write_url(0, 0, "internal:Sheet2!A1", Some(&url_format))?;
     /// worksheet.write_url(1, 0, "internal:Sheet2!B2", Some(&url_format))?;
     /// worksheet.write_url(2, 0, "internal:Sheet2!A1:B2", Some(&url_format))?;
@@ -911,8 +743,8 @@ impl<'a> Worksheet<'a> {
                 self.worksheet,
                 row,
                 col,
-                CString::new(url).unwrap().as_c_str().as_ptr(),
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                CString::new(url)?.as_c_str().as_ptr(),
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -924,9 +756,9 @@ impl<'a> Worksheet<'a> {
 
     /// Write an Excel boolean to the cell specified by row and column:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_boolean-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_boolean-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// worksheet.write_boolean(0, 0, true, None)?;
     /// worksheet.write_boolean(1, 0, false, None)?;
@@ -945,8 +777,8 @@ impl<'a> Worksheet<'a> {
                 self.worksheet,
                 row,
                 col,
-                if value { 1 } else { 0 },
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                value.into(),
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -958,13 +790,11 @@ impl<'a> Worksheet<'a> {
 
     /// Write a blank cell specified by row and column:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_blank-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_blank-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
-    /// # let mut url_format = workbook.add_format()
-    /// #   .set_underline(FormatUnderline::Single).set_font_color(FormatColor::Blue);
-    /// worksheet.write_blank(1, 1, Some(&url_format));
+    /// worksheet.write_blank(1, 1, None);
     /// # workbook.close()
     /// # }
     /// ```
@@ -984,7 +814,7 @@ impl<'a> Worksheet<'a> {
                 self.worksheet,
                 row,
                 col,
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -996,12 +826,10 @@ impl<'a> Worksheet<'a> {
 
     /// This function writes a formula or Excel function to the cell specified by row and column with a user defined numeric result:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_formula_num-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_formula_num-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
-    /// # let mut url_format = workbook.add_format()
-    /// #   .set_underline(FormatUnderline::Single).set_font_color(FormatColor::Blue);
     /// worksheet.write_formula_num(1, 1, "=1 + 2", None, 3.0);
     /// # workbook.close()
     /// # }
@@ -1014,10 +842,10 @@ impl<'a> Worksheet<'a> {
     /// However, applications that don't have a facility to calculate formulas, such as Excel Viewer, or some mobile
     /// applications will only display the 0 results.
     ///
-    /// If required, the worksheet_write_formula_num() function can be used to specify a formula and its result.
+    /// If required, the `worksheet_write_formula_num` function can be used to specify a formula and its result.
     ///
     /// This function is rarely required and is only provided for compatibility with some third party applications.
-    /// For most applications the worksheet_write_formula() function is the recommended way of writing formulas.
+    /// For most applications the `worksheet_write_formula` function is the recommended way of writing formulas.
     #[allow(clippy::too_many_arguments)]
     pub fn write_formula_num(
         &mut self,
@@ -1032,8 +860,8 @@ impl<'a> Worksheet<'a> {
                 self.worksheet,
                 row,
                 col,
-                CString::new(formula).unwrap().as_c_str().as_ptr(),
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                CString::new(formula)?.as_c_str().as_ptr(),
+                self._workbook.get_internal_option_format(format)?,
                 number,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
@@ -1046,21 +874,19 @@ impl<'a> Worksheet<'a> {
 
     /// This function writes a formula or Excel function to the cell specified by row and column with a user defined string result:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_formula_str-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_formula_str-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
-    /// # let mut url_format = workbook.add_format()
-    /// #   .set_underline(FormatUnderline::Single).set_font_color(FormatColor::Blue);
     /// worksheet.write_formula_str(1, 1, "=\"A\" & \"B\"", None, "AB");
     /// # workbook.close()
     /// # }
     /// ```
-    /// The worksheet_write_formula_str() function is similar to the worksheet_write_formula_num() function except it
-    /// writes a string result instead or a numeric result. See worksheet_write_formula_num() for more details on
+    /// The `worksheet_write_formula_str` function is similar to the `worksheet_write_formula_num` function except it
+    /// writes a string result instead or a numeric result. See `worksheet_write_formula_num` for more details on
     /// why/when these functions are required.
     ///
-    /// One place where the worksheet_write_formula_str() function may be required is to specify an empty result which
+    /// One place where the `worksheet_write_formula_str` function may be required is to specify an empty result which
     /// will force a recalculation of the formula when loaded in LibreOffice.
     #[allow(clippy::too_many_arguments)]
     pub fn write_formula_str(
@@ -1076,9 +902,9 @@ impl<'a> Worksheet<'a> {
                 self.worksheet,
                 row,
                 col,
-                CString::new(formula).unwrap().as_c_str().as_ptr(),
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
-                CString::new(result).unwrap().as_c_str().as_ptr(),
+                CString::new(formula)?.as_c_str().as_ptr(),
+                self._workbook.get_internal_option_format(format)?,
+                CString::new(result)?.as_c_str().as_ptr(),
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1090,21 +916,17 @@ impl<'a> Worksheet<'a> {
 
     /// This function is used to write strings with multiple formats. For example to write the string 'This is bold and this is italic' you would use the following:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_write_richtext-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_write_richtext-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
-    /// let mut bold = workbook.add_format()
-    ///     .set_bold();
-    /// let mut italic = workbook.add_format()
-    ///     .set_italic();
     /// worksheet.write_rich_string(
     ///     0, 0,
     ///     &[
     ///         ("This is ", None),
-    ///         ("bold", Some(&bold)),
+    ///         ("bold", Some(&Format::new().set_bold())),
     ///         (" and this is ", None),
-    ///         ("italic", Some(&italic))
+    ///         ("italic", Some(&Format::new().set_italic()))
     ///     ],
     ///     None
     /// )?;
@@ -1113,7 +935,7 @@ impl<'a> Worksheet<'a> {
     /// ```
     /// ![Result Image](https://github.com/informationsea/xlsxwriter-rs/raw/master/images/test-worksheet-write_richtext-1.png)
     ///
-    /// The basic rule is to break the string into fragments and put a lxw_format object before the fragment that you want to format. So if we look at the above example again:
+    /// The basic rule is to break the string into fragments and put a `lxw_format` object before the fragment that you want to format. So if we look at the above example again:
     ///
     /// This is **bold** and this is *italic*
     ///
@@ -1137,23 +959,19 @@ impl<'a> Worksheet<'a> {
     ) -> Result<(), XlsxError> {
         let mut c_str: Vec<Vec<u8>> = text
             .iter()
-            .map(|x| {
-                CString::new(x.0)
-                    .unwrap()
-                    .as_c_str()
-                    .to_bytes_with_nul()
-                    .to_vec()
-            })
-            .collect();
+            .map(|x| Ok(CString::new(x.0)?.as_c_str().to_bytes_with_nul().to_vec()))
+            .collect::<Result<_, XlsxError>>()?;
 
         let mut rich_text: Vec<_> = text
             .iter()
             .zip(c_str.iter_mut())
-            .map(|(x, y)| libxlsxwriter_sys::lxw_rich_string_tuple {
-                format: x.1.map(|z| z.format).unwrap_or(std::ptr::null_mut()),
-                string: y.as_mut_ptr() as *mut c_char,
+            .map(|(x, y)| {
+                Ok(libxlsxwriter_sys::lxw_rich_string_tuple {
+                    format: self._workbook.get_internal_option_format(x.1)?,
+                    string: y.as_mut_ptr().cast::<c_char>(),
+                })
             })
-            .collect();
+            .collect::<Result<_, XlsxError>>()?;
         let mut rich_text_ptr: Vec<*mut libxlsxwriter_sys::lxw_rich_string_tuple> = rich_text
             .iter_mut()
             .map(|x| x as *mut libxlsxwriter_sys::lxw_rich_string_tuple)
@@ -1166,7 +984,7 @@ impl<'a> Worksheet<'a> {
                 row,
                 col,
                 rich_text_ptr.as_mut_ptr(),
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1187,7 +1005,7 @@ impl<'a> Worksheet<'a> {
                 self.worksheet,
                 row,
                 height,
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1202,15 +1020,16 @@ impl<'a> Worksheet<'a> {
         row: WorksheetRow,
         height: f64,
         format: Option<&Format>,
-        options: &mut RowColOptions,
+        options: &RowColOptions,
     ) -> Result<(), XlsxError> {
         unsafe {
+            let mut options = options.to_internal();
             let result = libxlsxwriter_sys::worksheet_set_row_opt(
                 self.worksheet,
                 row,
                 height,
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
-                options,
+                self._workbook.get_internal_option_format(format)?,
+                &mut options,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1220,9 +1039,9 @@ impl<'a> Worksheet<'a> {
         }
     }
 
-    /// The set_row_pixels() function is the same as the [Worksheet::set_row()] function except that the height can be set in pixels.
+    /// The `set_row_pixels` function is the same as the [`Worksheet::set_row`] function except that the height can be set in pixels.
     ///
-    /// If you wish to set the format of a row without changing the height you can pass the default row height in pixels: [LXW_DEF_ROW_HEIGHT_PIXELS].
+    /// If you wish to set the format of a row without changing the height you can pass the default row height in pixels: [`LXW_DEF_ROW_HEIGHT_PIXELS`].
     pub fn set_row_pixels(
         &mut self,
         row: WorksheetRow,
@@ -1234,7 +1053,7 @@ impl<'a> Worksheet<'a> {
                 self.worksheet,
                 row,
                 pixels,
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1249,15 +1068,16 @@ impl<'a> Worksheet<'a> {
         row: WorksheetRow,
         pixels: u32,
         format: Option<&Format>,
-        options: &mut RowColOptions,
+        options: &RowColOptions,
     ) -> Result<(), XlsxError> {
+        let mut options = options.to_internal();
         unsafe {
             let result = libxlsxwriter_sys::worksheet_set_row_pixels_opt(
                 self.worksheet,
                 row,
                 pixels,
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
-                options,
+                self._workbook.get_internal_option_format(format)?,
+                &mut options,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1280,7 +1100,7 @@ impl<'a> Worksheet<'a> {
                 first_col,
                 last_col,
                 width,
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1296,16 +1116,17 @@ impl<'a> Worksheet<'a> {
         last_col: WorksheetCol,
         width: f64,
         format: Option<&Format>,
-        options: &mut RowColOptions,
+        options: &RowColOptions,
     ) -> Result<(), XlsxError> {
+        let mut options = options.to_internal();
         unsafe {
             let result = libxlsxwriter_sys::worksheet_set_column_opt(
                 self.worksheet,
                 first_col,
                 last_col,
                 width,
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
-                options,
+                self._workbook.get_internal_option_format(format)?,
+                &mut options,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1328,7 +1149,7 @@ impl<'a> Worksheet<'a> {
                 first_col,
                 last_col,
                 pixels,
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1346,14 +1167,15 @@ impl<'a> Worksheet<'a> {
         format: Option<&Format>,
         options: &mut RowColOptions,
     ) -> Result<(), XlsxError> {
+        let mut options = options.to_internal();
         unsafe {
             let result = libxlsxwriter_sys::worksheet_set_column_pixels_opt(
                 self.worksheet,
                 first_col,
                 last_col,
                 pixels,
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
-                options,
+                self._workbook.get_internal_option_format(format)?,
+                &mut options,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1365,9 +1187,9 @@ impl<'a> Worksheet<'a> {
 
     /// This function can be used to insert a image into a worksheet. The image can be in PNG, JPEG or BMP format:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_insert_image-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_insert_image-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// worksheet.insert_image(2, 1, "../images/simple1.png")?;
     /// # workbook.close()
@@ -1375,12 +1197,15 @@ impl<'a> Worksheet<'a> {
     /// ```
     /// ![Result Image](https://github.com/informationsea/xlsxwriter-rs/raw/master/images/test-worksheet-insert_image-1.png)
     ///
-    /// The Worksheet.insert_image_opt() function takes additional optional parameters to position and scale the image, see below.
+    /// The `Worksheet.insert_image_opt` function takes additional optional parameters to position and scale the image, see below.
     ///
     /// ### Note
-    /// The scaling of a image may be affected if is crosses a row that has its default height changed due to a font that is larger than the default font size or that has text wrapping turned on. To avoid this you should explicitly set the height of the row using Worksheet.set_row() if it crosses an inserted image.
+    /// The scaling of a image may be affected if is crosses a row that has its default height changed due to a font that is larger than
+    /// the default font size or that has text wrapping turned on. To avoid this you should explicitly set the height of the row using
+    /// [`Worksheet::set_row`] if it crosses an inserted image.
     ///
-    /// BMP images are only supported for backward compatibility. In general it is best to avoid BMP images since they aren't compressed. If used, BMP images must be 24 bit, true color, bitmaps.
+    /// BMP images are only supported for backward compatibility. In general it is best to avoid BMP images since they aren't compressed.
+    /// If used, BMP images must be 24 bit, true color, bitmaps.
     pub fn insert_image(
         &mut self,
         row: WorksheetRow,
@@ -1392,7 +1217,7 @@ impl<'a> Worksheet<'a> {
                 self.worksheet,
                 row,
                 col,
-                CString::new(filename).unwrap().as_c_str().as_ptr(),
+                CString::new(filename)?.as_c_str().as_ptr(),
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1402,11 +1227,11 @@ impl<'a> Worksheet<'a> {
         }
     }
 
-    /// This function is like Worksheet.insert_image() function except that it takes an optional `ImageOptions` struct to scale and position the image:
+    /// This function is like `Worksheet.insert_image` function except that it takes an optional `ImageOptions` struct to scale and position the image:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_insert_image_opt-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_insert_image_opt-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// worksheet.insert_image_opt(
     ///     2, 1,
@@ -1424,7 +1249,7 @@ impl<'a> Worksheet<'a> {
     /// ![Result Image](https://github.com/informationsea/xlsxwriter-rs/raw/master/images/test-worksheet-insert_image_opt-1.png)
     ///
     /// ### Note
-    /// See the notes about row scaling and BMP images in Worksheet.insert_image() above.
+    /// See the notes about row scaling and BMP images in [`Worksheet::insert_image`] above.
     pub fn insert_image_opt(
         &mut self,
         row: WorksheetRow,
@@ -1438,7 +1263,7 @@ impl<'a> Worksheet<'a> {
                 self.worksheet,
                 row,
                 col,
-                CString::new(filename).unwrap().as_c_str().as_ptr(),
+                CString::new(filename)?.as_c_str().as_ptr(),
                 &mut opt_struct,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
@@ -1451,16 +1276,16 @@ impl<'a> Worksheet<'a> {
 
     /// This function can be used to insert a image into a worksheet from a memory buffer:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_insert_image_buffer-1.xlsx");
+    /// # let workbook = Workbook::new("test-worksheet_insert_image_buffer-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
-    /// let data = include_bytes!("../../images/simple1.png");
+    /// let data = include_bytes!("../../../images/simple1.png");
     /// worksheet.insert_image_buffer(0, 0, &data[..])?;
     /// # workbook.close()
     /// # }
     /// ```
-    /// See Worksheet.insert_image() for details about the supported image formats, and other image features.
+    /// See [`Worksheet::insert_image`] for details about the supported image formats, and other image features.
     pub fn insert_image_buffer(
         &mut self,
         row: WorksheetRow,
@@ -1473,7 +1298,7 @@ impl<'a> Worksheet<'a> {
                 row,
                 col,
                 buffer.as_ptr(),
-                buffer.len() as libxlsxwriter_sys::size_t,
+                buffer.len(),
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1497,7 +1322,7 @@ impl<'a> Worksheet<'a> {
                 row,
                 col,
                 buffer.as_ptr(),
-                buffer.len() as libxlsxwriter_sys::size_t,
+                buffer.len(),
                 &mut opt_struct,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
@@ -1525,6 +1350,7 @@ impl<'a> Worksheet<'a> {
         }
     }
 
+    /// The [`Worksheet::merge_range`] function allows cells to be merged together so that they act as a single area.
     pub fn merge_range(
         &mut self,
         first_row: WorksheetRow,
@@ -1541,8 +1367,8 @@ impl<'a> Worksheet<'a> {
                 first_col,
                 last_row,
                 last_col,
-                CString::new(string).unwrap().as_c_str().as_ptr(),
-                format.map(|x| x.format).unwrap_or(std::ptr::null_mut()),
+                CString::new(string)?.as_c_str().as_ptr(),
+                self._workbook.get_internal_option_format(format)?,
             );
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
                 Ok(())
@@ -1552,193 +1378,79 @@ impl<'a> Worksheet<'a> {
         }
     }
 
-    /// This function allows an autofilter to be added to a worksheet.
-    ///
-    /// An autofilter is a way of adding drop down lists to the headers of a 2D range of worksheet data.
-    /// This allows users to filter the data based on simple criteria so that some data is shown and some is hidden.
-    pub fn autofilter(
-        &mut self,
-        first_row: WorksheetRow,
-        first_col: WorksheetCol,
-        last_row: WorksheetRow,
-        last_col: WorksheetCol,
-    ) -> Result<(), XlsxError> {
-        unsafe {
-            let result = libxlsxwriter_sys::worksheet_autofilter(
-                self.worksheet,
-                first_row,
-                first_col,
-                last_row,
-                last_col,
-            );
-            if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
-                Ok(())
-            } else {
-                Err(XlsxError::new(result))
-            }
-        }
-    }
-
-    /// This function is used to construct an Excel data validation or to limit the user input to a dropdown list of values
-    pub fn data_validation_cell(
-        &mut self,
-        row: WorksheetRow,
-        col: WorksheetCol,
-        validation: &DataValidation,
-    ) -> Result<(), XlsxError> {
-        unsafe {
-            let mut validation = validation.to_c_struct();
-            let result = libxlsxwriter_sys::worksheet_data_validation_cell(
-                self.worksheet,
-                row,
-                col,
-                &mut validation.data_validation,
-            );
-            if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
-                Ok(())
-            } else {
-                Err(XlsxError::new(result))
-            }
-        }
-    }
-
-    pub fn data_validation_range(
-        &mut self,
-        first_row: WorksheetRow,
-        first_col: WorksheetCol,
-        last_row: WorksheetRow,
-        last_col: WorksheetCol,
-        validation: &DataValidation,
-    ) -> Result<(), XlsxError> {
-        unsafe {
-            let result = libxlsxwriter_sys::worksheet_data_validation_range(
-                self.worksheet,
-                first_row,
-                first_col,
-                last_row,
-                last_col,
-                &mut validation.to_c_struct().data_validation,
-            );
-            if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
-                Ok(())
-            } else {
-                Err(XlsxError::new(result))
-            }
-        }
-    }
-
-    /// This function is used to add a table to a worksheet. Tables in Excel are a way of grouping a
-    /// range of cells into a single entity that has common formatting or that can be referenced
-    /// from formulas. Tables can have column headers, autofilters, total rows, column formulas and
-    /// default formatting.
-    ///
-    /// ```rust
-    /// # use xlsxwriter::*;
-    /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-worksheet_add_table-1.xlsx");
-    /// # let mut worksheet = workbook.add_worksheet(None)?;
-    /// worksheet.write_string(0, 0, "header 1", None)?;
-    /// worksheet.write_string(0, 1, "header 2", None)?;
-    /// worksheet.write_string(1, 0, "content 1", None)?;
-    /// worksheet.write_number(1, 1, 1.0, None)?;
-    /// worksheet.write_string(2, 0, "content 2", None)?;
-    /// worksheet.write_number(2, 1, 2.0, None)?;
-    /// worksheet.write_string(3, 0, "content 3", None)?;
-    /// worksheet.write_number(3, 1, 3.0, None)?;
-    /// worksheet.add_table(0, 0, 3, 1, None)?;
-    /// # workbook.close()
-    /// # }
-    /// ```
-    ///
-    /// Please read [libxslxwriter document](https://libxlsxwriter.github.io/working_with_tables.html) to learn more.
-    pub fn add_table(
-        &mut self,
-        first_row: WorksheetRow,
-        first_col: WorksheetCol,
-        last_row: WorksheetRow,
-        last_col: WorksheetCol,
-        options: Option<TableOptions<'a>>,
-    ) -> Result<(), XlsxError> {
-        eprintln!(
-            "col: {} {} {:?}",
-            first_col,
-            last_col,
-            options
-                .as_ref()
-                .map(|x| x.columns.as_ref().map(|y| y.len()))
-        );
-        if options
-            .as_ref()
-            .map(|x| {
-                x.columns
-                    .as_ref()
-                    .map(|y| y.len() != (last_col - first_col + 1).into())
-                    .unwrap_or(false)
-            })
-            .unwrap_or(false)
-        {
-            return Err(XlsxError {
-                error: crate::error::NUMBER_OF_COLUMNS_IS_NOT_MATCHED,
-            });
-        }
-
-        unsafe {
-            let mut options = options.map(|x| x.into_lxw_table_options());
-            let result = libxlsxwriter_sys::worksheet_add_table(
-                self.worksheet,
-                first_row,
-                first_col,
-                last_row,
-                last_col,
-                options
-                    .as_mut()
-                    .map(|x| &mut x.1 as *mut libxlsxwriter_sys::lxw_table_options)
-                    .unwrap_or(std::ptr::null_mut()),
-            );
-            if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
-                Ok(())
-            } else {
-                Err(XlsxError::new(result))
-            }
-        }
-    }
-
+    /// The [`Worksheet::activate`] function is used to specify which worksheet is initially visible in a multi-sheet workbook.
     pub fn activate(&mut self) {
         unsafe {
             libxlsxwriter_sys::worksheet_activate(self.worksheet);
         }
     }
 
+    /// The [`Worksheet::select`] function is used to indicate that a worksheet is selected in a multi-sheet workbook.
+    ///
+    /// A selected worksheet has its tab highlighted. Selecting worksheets is a way of grouping them together so that, for example, several worksheets could be printed in one go.
+    /// A worksheet that has been activated via the [`Worksheet::activate`] function will also appear as selected.
     pub fn select(&mut self) {
         unsafe {
             libxlsxwriter_sys::worksheet_select(self.worksheet);
         }
     }
 
+    /// The [`Worksheet::hide`] function is used to hide a worksheet.
+    ///
+    /// You may wish to hide a worksheet in order to avoid confusing a user with intermediate data or calculations.
+    ///
+    /// A hidden worksheet can not be activated or selected so this function is mutually exclusive with the [`Worksheet::activate`]
+    /// and [`Worksheet::select`] functions. In addition, since the first worksheet will default to being the active worksheet,
+    /// you cannot hide the first worksheet without activating another sheet.
     pub fn hide(&mut self) {
         unsafe {
             libxlsxwriter_sys::worksheet_hide(self.worksheet);
         }
     }
 
+    /// The [`Worksheet::activate`] function determines which worksheet is initially selected. However,
+    /// if there are a large number of worksheets the selected worksheet may not appear on the screen.
+    /// To avoid this you can select the leftmost visible worksheet tab using [`Worksheet::set_first_sheet`]
+    ///
+    /// This function is not required very often. The default value is the first worksheet.
     pub fn set_first_sheet(&mut self) {
         unsafe {
             libxlsxwriter_sys::worksheet_set_first_sheet(self.worksheet);
         }
     }
 
+    /// The [`Worksheet::freeze_panes`] function can be used to divide a worksheet into horizontal or
+    /// vertical regions known as panes and to "freeze" these panes so that the splitter bars are not visible.
+    ///
+    /// The parameters row and col are used to specify the location of the split. It should be noted that the
+    /// split is specified at the top or left of a cell and that the function uses zero based indexing. Therefore
+    /// to freeze the first row of a worksheet it is necessary to specify the split at row 2 (which is 1 as the zero-based index).
+    ///
+    /// You can set one of the row and col parameters as zero if you do not want either a vertical or horizontal split.
     pub fn freeze_panes(&mut self, row: WorksheetRow, col: WorksheetCol) {
         unsafe {
             libxlsxwriter_sys::worksheet_freeze_panes(self.worksheet, row, col);
         }
     }
 
+    /// The [`Worksheet::split_panes`] function can be used to divide a worksheet into horizontal or vertical regions known as panes.
+    /// This function is different from the [`Worksheet::freeze_panes`] function in that the splits between the panes will be visible
+    /// to the user and each pane will have its own scroll bars.
+    ///
+    /// The parameters vertical and horizontal are used to specify the vertical and horizontal position of the split. The units for
+    /// vertical and horizontal are the same as those used by Excel to specify row height and column width. However, the vertical
+    /// and horizontal units are different from each other. Therefore you must specify the vertical and horizontal parameters in
+    /// terms of the row heights and column widths that you have set or the default values which are 15 for a row and 8.43 for a column.
     pub fn split_panes(&mut self, vertical: f64, horizontal: f64) {
         unsafe {
             libxlsxwriter_sys::worksheet_split_panes(self.worksheet, vertical, horizontal);
         }
     }
 
+    /// The [`Worksheet::set_selection`] function can be used to specify which cell or range of cells is selected in a worksheet:
+    /// The most common requirement is to select a single cell, in which case the first_ and last_ parameters should be the same.
+    ///
+    /// The active cell within a selected range is determined by the order in which `first_` and `last_` are specified.
     pub fn set_selection(
         &mut self,
         first_row: WorksheetRow,
@@ -1785,7 +1497,7 @@ impl<'a> Worksheet<'a> {
         unsafe {
             let result = libxlsxwriter_sys::worksheet_set_header(
                 self.worksheet,
-                CString::new(header).unwrap().as_c_str().as_ptr(),
+                CString::new(header)?.as_c_str().as_ptr(),
             );
 
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
@@ -1800,7 +1512,7 @@ impl<'a> Worksheet<'a> {
         unsafe {
             let result = libxlsxwriter_sys::worksheet_set_footer(
                 self.worksheet,
-                CString::new(footer).unwrap().as_c_str().as_ptr(),
+                CString::new(footer)?.as_c_str().as_ptr(),
             );
 
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {
@@ -1819,7 +1531,7 @@ impl<'a> Worksheet<'a> {
         unsafe {
             let result = libxlsxwriter_sys::worksheet_set_header_opt(
                 self.worksheet,
-                CString::new(header).unwrap().as_c_str().as_ptr(),
+                CString::new(header)?.as_c_str().as_ptr(),
                 &mut options.into(),
             );
 
@@ -1839,7 +1551,7 @@ impl<'a> Worksheet<'a> {
         unsafe {
             let result = libxlsxwriter_sys::worksheet_set_footer_opt(
                 self.worksheet,
-                CString::new(footer).unwrap().as_c_str().as_ptr(),
+                CString::new(footer)?.as_c_str().as_ptr(),
                 &mut options.into(),
             );
 
@@ -2036,7 +1748,7 @@ impl<'a> Worksheet<'a> {
                 convert_bool(symbols_below),
                 convert_bool(symbols_right),
                 convert_bool(auto_style),
-            )
+            );
         }
     }
 
@@ -2046,7 +1758,7 @@ impl<'a> Worksheet<'a> {
                 self.worksheet,
                 height,
                 convert_bool(hide_unused_rows),
-            )
+            );
         }
     }
 
@@ -2054,7 +1766,7 @@ impl<'a> Worksheet<'a> {
         unsafe {
             let result = libxlsxwriter_sys::worksheet_set_vba_name(
                 self.worksheet,
-                CString::new(name).unwrap().as_c_str().as_ptr(),
+                CString::new(name)?.as_c_str().as_ptr(),
             );
 
             if result == libxlsxwriter_sys::lxw_error_LXW_NO_ERROR {

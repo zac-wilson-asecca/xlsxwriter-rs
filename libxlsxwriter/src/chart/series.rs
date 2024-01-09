@@ -1,27 +1,18 @@
-use super::constants::*;
-use super::structs::*;
-use crate::{convert_bool, convert_str, Workbook, WorksheetCol, WorksheetRow};
-use std::os::raw::c_char;
-
-/// Struct to represent an Excel chart data series.
-/// This struct is created using the chart.add_series() function. It is used in functions that modify a chart series but the members of the struct aren't modified directly.
-pub struct ChartSeries<'a> {
-    pub(crate) _workbook: &'a Workbook,
-    pub(crate) chart_series: *mut libxlsxwriter_sys::lxw_chart_series,
-}
+use super::{ChartFill, ChartLine, ChartMarkerType, ChartPattern, ChartSeries};
+use crate::{convert_bool, WorksheetCol, WorksheetRow, XlsxError};
 
 impl<'a> ChartSeries<'a> {
-    /// The categories and values of a chart data series are generally set using the chart_add_series() function and Excel range formulas like "=Sheet1!$A$2:$A$7".
+    /// The categories and values of a chart data series are generally set using the `chart_add_series` function and Excel range formulas like "=Sheet1!$A$2:$A$7".
     ///
-    /// The `ChartSeries.set_categories()` function is an alternative method that is easier to generate programmatically. It requires that you set the categories and values parameters in Chart.add_series() to `None` and then set them using row and column values in ChartSeries.set_categories() and ChartSeries.set_values():
+    /// The `ChartSeries.set_categories()` function is an alternative method that is easier to generate programmatically. It requires that you set the categories and values parameters in `Chart.add_series` to `None` and then set them using row and column values in `ChartSeries.set_categories` and `ChartSeries.set_values`:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_categories-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_categories-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Column);
-    /// let mut series = chart.add_series(None, None);
+    /// let mut series = chart.add_series(None, None)?;
     /// series.set_categories("Sheet1", 0, 0, 4, 0); // "=Sheet1!$A$1:$A$5"
     /// series.set_values("Sheet1", 0, 1, 4, 1);     // "=Sheet1!$B$1:$B$5"
     /// # worksheet.insert_chart(1, 3, &chart)?;
@@ -42,19 +33,18 @@ impl<'a> ChartSeries<'a> {
         first_column: WorksheetCol,
         last_row: WorksheetRow,
         last_column: WorksheetCol,
-    ) {
-        let sheet_name_vec = convert_str(sheet_name);
+    ) -> Result<(), XlsxError> {
         unsafe {
             libxlsxwriter_sys::chart_series_set_categories(
                 self.chart_series,
-                sheet_name_vec.as_ptr() as *const c_char,
+                self._workbook.register_str(sheet_name)?,
                 first_row,
                 first_column,
                 last_row,
                 last_column,
             );
         }
-        self._workbook.const_str.borrow_mut().push(sheet_name_vec);
+        Ok(())
     }
 
     /// The categories and values of a chart data series are generally set using the `Chart.add_series()` function and Excel range formulas like "=Sheet1!$A$2:$A$7".
@@ -67,31 +57,30 @@ impl<'a> ChartSeries<'a> {
         first_column: WorksheetCol,
         last_row: WorksheetRow,
         last_column: WorksheetCol,
-    ) {
-        let sheet_name_vec = convert_str(sheet_name);
+    ) -> Result<(), XlsxError> {
         unsafe {
             libxlsxwriter_sys::chart_series_set_values(
                 self.chart_series,
-                sheet_name_vec.as_ptr() as *const c_char,
+                self._workbook.register_str(sheet_name)?,
                 first_row,
                 first_column,
                 last_row,
                 last_column,
             );
         }
-        self._workbook.const_str.borrow_mut().push(sheet_name_vec);
+        Ok(())
     }
 
     /// This function is used to set the name for a chart data series. The series name in Excel is displayed in the chart legend and in the formula bar. The name property is optional and if it isn't supplied it will default to `Series 1..n`.
     ///
     /// ```rust
-    /// use xlsxwriter::*;
+    /// use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_name-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_name-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Column);
-    /// let mut series = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"));
+    /// let mut series = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"))?;
     /// series.set_name("Quarterly budget data");
     /// # worksheet.insert_chart(1, 3, &chart)?;
     /// # workbook.close()
@@ -111,13 +100,13 @@ impl<'a> ChartSeries<'a> {
     ///
     /// The name parameter can also be a formula such as =Sheet1!$A$1 to point to a cell in the workbook that contains the name:
     /// ```rust
-    /// use xlsxwriter::*;
+    /// use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_name-2.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_name-2.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Column);
-    /// let mut series = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"));
+    /// let mut series = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"))?;
     /// series.set_name("=Sheet1!$A$1:$A$1");
     /// # worksheet.insert_chart(1, 3, &chart)?;
     /// # workbook.close()
@@ -134,26 +123,25 @@ impl<'a> ChartSeries<'a> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_name(&mut self, name: &str) {
-        let name_vec = convert_str(name);
+    pub fn set_name(&mut self, name: &str) -> Result<(), XlsxError> {
         unsafe {
             libxlsxwriter_sys::chart_series_set_name(
                 self.chart_series,
-                name_vec.as_ptr() as *const c_char,
+                self._workbook.register_str(name)?,
             );
         }
-        self._workbook.const_str.borrow_mut().push(name_vec);
+        Ok(())
     }
 
     /// The `ChartSeries.set_name_range()` function can be used to set a series name range and is an alternative to using `ChartSeries.set_name()` and a string formula:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_name_range-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_name_range-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Column);
-    /// let mut series = chart.add_series(None, Some("=Sheet1!$B$2:$B$6"));
+    /// let mut series = chart.add_series(None, Some("=Sheet1!$B$2:$B$6"))?;
     /// series.set_name_range("Sheet1", 0, 1); // =Sheet1!$B$1
     /// # worksheet.insert_chart(1, 3, &chart)?;
     /// # workbook.close()
@@ -170,30 +158,34 @@ impl<'a> ChartSeries<'a> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_name_range(&mut self, sheet_name: &str, row: WorksheetRow, column: WorksheetCol) {
-        let sheet_name_vec = convert_str(sheet_name);
+    pub fn set_name_range(
+        &mut self,
+        sheet_name: &str,
+        row: WorksheetRow,
+        column: WorksheetCol,
+    ) -> Result<(), XlsxError> {
         unsafe {
             libxlsxwriter_sys::chart_series_set_name_range(
                 self.chart_series,
-                sheet_name_vec.as_ptr() as *const c_char,
+                self._workbook.register_str(sheet_name)?,
                 row,
                 column,
             );
         }
-        self._workbook.const_str.borrow_mut().push(sheet_name_vec);
+        Ok(())
     }
 
     /// Set the line/border properties of a chart series:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_line-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_line-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Column);
-    /// let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"));
-    /// let mut series2 = chart.add_series(None, Some("=Sheet1!$B$2:$B$6"));
-    /// let mut series3 = chart.add_series(None, Some("=Sheet1!$C$2:$C$6"));
+    /// let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"))?;
+    /// let mut series2 = chart.add_series(None, Some("=Sheet1!$B$2:$B$6"))?;
+    /// let mut series3 = chart.add_series(None, Some("=Sheet1!$C$2:$C$6"))?;
     /// let mut chart_line = ChartLine::new();
     /// chart_line.color = FormatColor::Red;
     /// series1.set_line(&chart_line);
@@ -223,15 +215,15 @@ impl<'a> ChartSeries<'a> {
 
     /// Set the fill properties of a chart series:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_fill-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_fill-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Column);
-    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"));
-    /// # let mut series2 = chart.add_series(None, Some("=Sheet1!$B$2:$B$6"));
-    /// # let mut series3 = chart.add_series(None, Some("=Sheet1!$C$2:$C$6"));
+    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"))?;
+    /// # let mut series2 = chart.add_series(None, Some("=Sheet1!$B$2:$B$6"))?;
+    /// # let mut series3 = chart.add_series(None, Some("=Sheet1!$C$2:$C$6"))?;
     /// let mut chart_fill_1 = ChartFill::new();
     /// chart_fill_1.color = FormatColor::Red;
     /// let mut chart_fill_2 = ChartFill::new();
@@ -265,15 +257,15 @@ impl<'a> ChartSeries<'a> {
 
     /// Invert the fill color for negative values. Usually only applicable to column and bar charts.
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_invert_if_negative-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_invert_if_negative-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Column);
-    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"));
-    /// # let mut series2 = chart.add_series(None, Some("=Sheet1!$B$2:$B$6"));
-    /// # let mut series3 = chart.add_series(None, Some("=Sheet1!$C$2:$C$6"));
+    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"))?;
+    /// # let mut series2 = chart.add_series(None, Some("=Sheet1!$B$2:$B$6"))?;
+    /// # let mut series3 = chart.add_series(None, Some("=Sheet1!$C$2:$C$6"))?;
     /// # series1.set_name("=Sheet1!$A$1");
     /// # series2.set_name("=Sheet1!$B$1");
     /// # series3.set_name("=Sheet1!$C$1");
@@ -313,14 +305,14 @@ impl<'a> ChartSeries<'a> {
 
     /// Set the pattern properties of a chart series:
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_pattern-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_pattern-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Column);
-    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"));
-    /// # let mut series2 = chart.add_series(None, Some("=Sheet1!$B$2:$B$6"));
+    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"))?;
+    /// # let mut series2 = chart.add_series(None, Some("=Sheet1!$B$2:$B$6"))?;
     /// # series1.set_name("=Sheet1!$A$1");
     /// # series2.set_name("=Sheet1!$B$1");
     /// let pattern1 = ChartPattern::new(FormatColor::Custom(0x804000), FormatColor::Custom(0xC68C53), ChartPatternType::Shingle);
@@ -344,19 +336,19 @@ impl<'a> ChartSeries<'a> {
     /// ![Result Image](https://github.com/informationsea/xlsxwriter-rs/raw/master/images/test-chart_series-set_pattern-1.png)
     pub fn set_pattern(&mut self, pattern: &ChartPattern) {
         unsafe {
-            libxlsxwriter_sys::chart_series_set_pattern(self.chart_series, &mut pattern.value())
+            libxlsxwriter_sys::chart_series_set_pattern(self.chart_series, &mut pattern.value());
         }
     }
 
     /// In Excel a chart marker is used to distinguish data points in a plotted series. In general only Line and Scatter and Radar chart types use markers.
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_marker-type-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_marker-type-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Line);
-    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"));
+    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"))?;
     /// # series1.set_name("=Sheet1!$A$1");
     /// series1.set_marker_type(ChartMarkerType::MarkerDiamond);
     /// # worksheet.insert_chart(1, 3, &chart)?;
@@ -374,19 +366,19 @@ impl<'a> ChartSeries<'a> {
     /// ![Result Image](https://github.com/informationsea/xlsxwriter-rs/raw/master/images/test-chart_series-set_marker_type-1.png)
     pub fn set_marker_type(&mut self, maker_type: ChartMarkerType) {
         unsafe {
-            libxlsxwriter_sys::chart_series_set_marker_type(self.chart_series, maker_type.value())
+            libxlsxwriter_sys::chart_series_set_marker_type(self.chart_series, maker_type.value());
         }
     }
 
     /// This function is used to specify the size of the series marker.
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_marker-type-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_marker-type-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Line);
-    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"));
+    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"))?;
     /// # series1.set_name("=Sheet1!$A$1");
     /// series1.set_marker_type(ChartMarkerType::MarkerDiamond);
     /// series1.set_marker_size(10);
@@ -408,13 +400,13 @@ impl<'a> ChartSeries<'a> {
 
     /// Set the line/border properties of a chart marker.
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_marker-line-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_marker-line-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Line);
-    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"));
+    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"))?;
     /// # series1.set_name("=Sheet1!$A$1");
     /// series1.set_marker_type(ChartMarkerType::MarkerDiamond);
     /// let mut marker_line = ChartLine::new();
@@ -438,19 +430,19 @@ impl<'a> ChartSeries<'a> {
             libxlsxwriter_sys::chart_series_set_marker_line(
                 self.chart_series,
                 &mut chart_line.value(),
-            )
+            );
         }
     }
 
     /// Set the line/border properties of a chart marker.
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_marker-fill-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_marker-fill-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Line);
-    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"));
+    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"))?;
     /// # series1.set_name("=Sheet1!$A$1");
     /// series1.set_marker_type(ChartMarkerType::MarkerDiamond);
     /// let mut marker_line = ChartLine::new();
@@ -477,7 +469,7 @@ impl<'a> ChartSeries<'a> {
             libxlsxwriter_sys::chart_series_set_marker_fill(
                 self.chart_series,
                 &mut chart_fill.value(),
-            )
+            );
         }
     }
 
@@ -485,13 +477,13 @@ impl<'a> ChartSeries<'a> {
 
     /// This function is used to set the smooth property of a line series. It is only applicable to the line and scatter chart types.
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_smooth-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_smooth-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Line);
-    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"));
+    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"))?;
     /// # series1.set_name("=Sheet1!$A$1");
     /// series1.set_smooth(true);
     /// # worksheet.insert_chart(1, 3, &chart)?;
@@ -509,19 +501,19 @@ impl<'a> ChartSeries<'a> {
     /// ![Result Image](https://github.com/informationsea/xlsxwriter-rs/raw/master/images/test-chart_series-set_smooth-1.png)
     pub fn set_smooth(&mut self, smooth: bool) {
         unsafe {
-            libxlsxwriter_sys::chart_series_set_smooth(self.chart_series, convert_bool(smooth))
+            libxlsxwriter_sys::chart_series_set_smooth(self.chart_series, convert_bool(smooth));
         }
     }
 
     /// This function is used to turn on data labels for a chart series. Data labels indicate the values of the plotted data points.
     /// ```rust
-    /// # use xlsxwriter::*;
+    /// # use xlsxwriter::prelude::*;
     /// # fn main() -> Result<(), XlsxError> {
-    /// # let workbook = Workbook::new("test-chart_series-set_labels-1.xlsx");
+    /// # let workbook = Workbook::new("test-chart_series-set_labels-1.xlsx")?;
     /// # let mut worksheet = workbook.add_worksheet(None)?;
     /// # write_worksheet(&mut worksheet)?; // write worksheet contents
     /// # let mut chart = workbook.add_chart(ChartType::Line);
-    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"));
+    /// # let mut series1 = chart.add_series(None, Some("=Sheet1!$A$2:$A$6"))?;
     /// # series1.set_name("=Sheet1!$A$1");
     /// series1.set_marker_type(ChartMarkerType::MarkerDiamond);
     /// series1.set_labels();

@@ -5,10 +5,11 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-const C_FILES: [&str; 25] = [
+const C_FILES: [&str; 26] = [
     "third_party/libxlsxwriter/third_party/tmpfileplus/tmpfileplus.c",
     "third_party/libxlsxwriter/third_party/minizip/ioapi.c",
     "third_party/libxlsxwriter/third_party/minizip/zip.c",
+    "third_party/libxlsxwriter/third_party/dtoa/emyg_dtoa.c",
     "third_party/libxlsxwriter/src/app.c",
     "third_party/libxlsxwriter/src/chart.c",
     "third_party/libxlsxwriter/src/chartsheet.c",
@@ -101,14 +102,24 @@ fn main() -> io::Result<()> {
             .include("include");
     }
 
+    // Make `libxlsxwriter` use DTOA for number formating to avoid locale-specific C functions.
+    build.define("USE_DTOA_LIBRARY", None);
+
     build.compile("libxlsxwriter.a");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
     // the resulting bindings.
-    let bindings = bindgen::Builder::default()
+    let builder = bindgen::Builder::default()
         .generate_comments(false)
-        .clang_arg("-Iinclude")
+        .clang_arg("-Iinclude");
+    let builder = if let Ok(sysroot) = env::var("SYSROOT") {
+        builder.clang_arg(format!("--sysroot={}", sysroot))
+    } else {
+        builder
+    };
+
+    let bindings = builder
         .header("wrapper.h")
         .allowlist_function("^(chart|chartsheet|workbook|worksheet|format|lxw)_.*")
         .allowlist_type("^lxw_.*")
